@@ -320,10 +320,13 @@ func occupiedOrWall(rows [BoardH]uint16, x, y int) bool {
 	return rows[y]&(1<<x) != 0
 }
 
-func detectTSpin(piece byte, lockedRows [BoardH]uint16, rotIndex int, x, y, lines int, lastRotation bool) string {
-	if piece != 'T' || !lastRotation {
-		return ""
-	}
+func isImmobileBeforeLock(rows [BoardH]uint16, rot Rotation, x, y int) bool {
+	return collides(rows, rot, x-1, y) &&
+		collides(rows, rot, x+1, y) &&
+		collides(rows, rot, x, y+1)
+}
+
+func tSpinCornerCount(lockedRows [BoardH]uint16, x, y int) int {
 	// The normalized T rotations used by this program all have the rotation
 	// center at local coordinate (1,1). Count the four diagonal corners around
 	// that center. This approximates the common three-corner T-Spin rule.
@@ -335,6 +338,40 @@ func detectTSpin(piece byte, lockedRows [BoardH]uint16, rotIndex int, x, y, line
 			blocked++
 		}
 	}
+	return blocked
+}
+
+func detectSpin(piece byte, beforeRows [BoardH]uint16, lockedRows [BoardH]uint16, rot Rotation, x, y, lines int, lastRotation bool) string {
+	if !lastRotation {
+		return ""
+	}
+	if piece == 'T' {
+		blocked := tSpinCornerCount(lockedRows, x, y)
+		if blocked < 3 {
+			return ""
+		}
+		if blocked == 3 && lines <= 1 {
+			return "MINI T-SPIN"
+		}
+		return "T-SPIN"
+	}
+
+	// TETR.IO-like all-spin approximation: if a non-T tetromino locks immediately
+	// after a rotation and cannot move left, right, or down in its pre-lock board,
+	// classify it as a piece spin. This is intentionally conservative enough to
+	// catch common S/Z/J/L/I spin finishes used in PC/DPC routes.
+	if isImmobileBeforeLock(beforeRows, rot, x, y) {
+		return fmt.Sprintf("%c-SPIN", piece)
+	}
+	return ""
+}
+
+func detectTSpin(piece byte, lockedRows [BoardH]uint16, rotIndex int, x, y, lines int, lastRotation bool) string {
+	// Backward-compatible wrapper for older call sites.
+	if piece != 'T' || !lastRotation {
+		return ""
+	}
+	blocked := tSpinCornerCount(lockedRows, x, y)
 	if blocked < 3 {
 		return ""
 	}
@@ -373,8 +410,11 @@ func bitsCount16(v uint16) int {
 func scoreEvent(lines int, pc bool, combo int, b2b bool, spin string) (score int, newCombo int, newB2B bool) {
 	base := 0
 	difficult := false
-	switch spin {
-	case "T-SPIN":
+	isNamedSpin := spin != "" && spin != "MINI T-SPIN"
+	switch {
+	case spin == "T-SPIN" || (isNamedSpin && strings.HasSuffix(spin, "-SPIN")):
+		// TETR.IO-style all-spin approximation. Non-T spins use the same generic
+		// Spin Zero/Single/Double/Triple base values as the documented spin table.
 		switch lines {
 		case 0:
 			base = 400
@@ -386,7 +426,7 @@ func scoreEvent(lines int, pc bool, combo int, b2b bool, spin string) (score int
 			base = 1600
 		}
 		difficult = lines > 0
-	case "MINI T-SPIN":
+	case spin == "MINI T-SPIN":
 		switch lines {
 		case 0:
 			base = 100
@@ -668,7 +708,10 @@ func shouldAttemptPerfectClear(rows [BoardH]uint16, pcMode bool) bool {
 }
 
 func perfectClearSearch(init State, depth, beam int) (State, bool, int) {
-	return perfectClearSearchWithLimit(init, depth, beam, 180)
+	// Use the user-selected beam for exact PC search. The previous cap was too
+	// aggressive and could prune low-immediate-reward T/S/Z spin routes before
+	// the final perfect clear became visible.
+	return perfectClearSearchWithLimit(init, depth, beam, 0)
 }
 
 func perfectClearSearchWithLimit(init State, depth, beam int, beamCap int) (State, bool, int) {
@@ -738,6 +781,28 @@ func reachKey(n reachNode) string {
 
 func lockKey(n reachNode) string {
 	return fmt.Sprintf("%d:%d:%d", n.X, n.Y, n.Rot)
+}
+
+func enumerateGroundedSpinLocks(rows [BoardH]uint16, piece byte) []reachNode {
+	rots := Pieces[piece]
+	out := []reachNode{}
+	for ri, rot := range rots {
+		maxX := maxRotX(rot)
+		for x := -3; x <= BoardW-maxX+2; x++ {
+			for y := -4; y < BoardH; y++ {
+				if collides(rows, rot, x, y) || !collides(rows, rot, x, y+1) {
+					continue
+				}
+				_, lines, _, _, lockedRows := placeAndClearDetailed(rows, rot, x, y)
+				spin := detectSpin(piece, rows, lockedRows, rot, x, y, lines, true)
+				if spin == "" {
+					continue
+				}
+				out = append(out, reachNode{X: x, Y: y, Rot: ri, LastRot: true})
+			}
+		}
+	}
+	return out
 }
 
 func srsKicks(piece byte, from, to, rotCount int) []Point {
@@ -886,6 +951,19 @@ func candidatesForPiece(s State, piece byte, source string, level int, pcMode bo
 	out := []Candidate{}
 	bestByLock := map[string]Candidate{}
 	locks := reachableLockPlacements(s.Rows, piece)
+	// Add conservative spin-supplement locks. These cover common S/Z/J/L/I spin
+	// finishes when the simplified SRS reachability graph misses a kick path, but
+	// only if the final position is grounded and immobile after a rotation.
+	seenLocks := map[string]bool{}
+	for _, lk := range locks {
+		seenLocks[lockKey(lk)] = true
+	}
+	for _, lk := range enumerateGroundedSpinLocks(s.Rows, piece) {
+		if !seenLocks[lockKey(lk)] {
+			locks = append(locks, lk)
+			seenLocks[lockKey(lk)] = true
+		}
+	}
 	// Fallback to the old hard-drop scan if the reachability graph fails for a
 	// very unusual spawn situation.
 	if len(locks) == 0 {
@@ -909,7 +987,7 @@ func candidatesForPiece(s State, piece byte, source string, level int, pcMode bo
 		if topOut(nr) {
 			continue
 		}
-		spin := detectTSpin(piece, lockedRows, lk.Rot, lk.X, lk.Y, lines, lk.LastRot)
+		spin := detectSpin(piece, s.Rows, lockedRows, rot, lk.X, lk.Y, lines, lk.LastRot)
 		immediate, nc, nb := scoreEvent(lines, pc, s.Combo, s.B2B, spin)
 		mv := Move{Source: source, Piece: string(piece), Rotation: lk.Rot, X: lk.X, Y: lk.Y, Lines: lines, PerfectClear: pc, Immediate: immediate, Spin: spin, Kick: lk.LastRot, Cells: cells}
 		cand := Candidate{Move: mv, Rows: nr, Score: s.Score + immediate, Combo: nc, B2B: nb}
@@ -1083,9 +1161,9 @@ func SearchBest(rows [BoardH]uint16, current byte, next []byte, hold byte, depth
 		if pcDepth > 6 {
 			pcDepth = 6
 		}
-		pcBest, _, pcExplored := perfectClearSearch(exactInit, pcDepth, beam)
+		pcBest, pcFound, pcExplored := perfectClearSearch(exactInit, pcDepth, beam)
 		explored += pcExplored
-		if pcBest.Path != nil {
+		if pcFound && pcBest.Path != nil {
 			plan := pathToMoves(pcBest.Path, pcBest.PathLen)
 			first := plan[0]
 			afterFirst := replayFirst(rows, init, first, pcMode)
@@ -1153,7 +1231,7 @@ func replayFirst(rows [BoardH]uint16, init State, mv Move, pcMode bool) State {
 	nr, lines, pc, _, lockedRows := placeAndClearDetailed(rows, rot, mv.X, mv.Y)
 	spin := mv.Spin
 	if spin == "" {
-		spin = detectTSpin(piece, lockedRows, mv.Rotation, mv.X, mv.Y, lines, mv.Kick)
+		spin = detectSpin(piece, rows, lockedRows, rot, mv.X, mv.Y, lines, mv.Kick)
 	}
 	imm, nc, nb := scoreEvent(lines, pc, st.Combo, st.B2B, spin)
 	mv.Lines = lines
