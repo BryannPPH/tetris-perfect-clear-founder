@@ -1,0 +1,97 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}INTRODUCTION}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}THEORETICAL FOUNDATION}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Tetris-Like Stacking Games}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Suggested illustration for the TETR.IO game context.}}{2}{figure.1}\protected@file@percent }
+\newlabel{fig:tetr_logo}{{1}{2}{Suggested illustration for the TETR.IO game context}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}The Seven Tetrominoes}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Suggested illustration of the seven tetrominoes.}}{2}{figure.2}\protected@file@percent }
+\newlabel{fig:tetrominoes_placeholder}{{2}{2}{Suggested illustration of the seven tetrominoes}{figure.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces The seven tetrominoes and their common strategic roles.}}{2}{table.1}\protected@file@percent }
+\newlabel{tab:tetrominoes}{{1}{2}{The seven tetrominoes and their common strategic roles}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}TETR.IO Blitz Mode}{2}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Seven-Piece Bag Randomizer}{2}{subsection.2.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Suggested illustration of the seven-bag randomizer.}}{2}{figure.3}\protected@file@percent }
+\newlabel{fig:bag_placeholder}{{3}{2}{Suggested illustration of the seven-bag randomizer}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}TETR.IO Blitz Scoring Table}{3}{subsection.2.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Publicly documented TETR.IO Blitz scoring values.}}{3}{table.2}\protected@file@percent }
+\newlabel{tab:tetrio_scoring}{{2}{3}{Publicly documented TETR.IO Blitz scoring values}{table.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.6}Scoring Events in Modern Tetris Systems}{3}{subsection.2.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.7}Dynamic Programming}{3}{subsection.2.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.8}Optimal Substructure in Blitz Strategy}{3}{subsection.2.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.9}State-Space Explosion}{4}{subsection.2.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}PROBLEM FORMULATION}{4}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Two Related Optimization Problems}{4}{subsection.3.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Ideal Blitz formulation versus the implemented advisor.}}{4}{table.3}\protected@file@percent }
+\newlabel{tab:ideal_vs_impl}{{3}{4}{Ideal Blitz formulation versus the implemented advisor}{table.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Ideal Blitz Objective}{4}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Implemented Bounded-Horizon Objective}{4}{subsection.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}State Representation Used in the Code}{4}{subsection.3.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Formal state components and their code-level realization.}}{4}{table.4}\protected@file@percent }
+\newlabel{tab:state_impl}{{4}{4}{Formal state components and their code-level realization}{table.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Action Space}{5}{subsection.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}Transition Function}{5}{subsection.3.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.7}Immediate Reward Used by the Solver}{5}{subsection.3.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}DYNAMIC PROGRAMMING MODEL}{5}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Bellman Recurrence for the Implemented Search}{5}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Visible Queue and Seven-Bag Residue}{5}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Memoization as State-Based Dynamic Programming}{5}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Beam-Pruned DP Layers}{6}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Dedicated Perfect-Clear Subsearch}{6}{subsection.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Why This Is Still Dynamic Programming}{6}{subsection.4.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}PRACTICAL OPTIMIZATION TECHNIQUES}{6}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Bitboard Representation}{6}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Placement Generation}{6}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Heuristic Features Actually Used in the Code}{6}{subsection.5.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Main feature terms used by the implemented evaluation functions.}}{6}{table.5}\protected@file@percent }
+\newlabel{tab:feature_weights}{{5}{6}{Main feature terms used by the implemented evaluation functions}{table.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}State Merging and Dominance}{6}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Beam Width as a Speed--Quality Knob}{6}{subsection.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Complexity of the Implemented Search}{6}{subsection.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}IMPLEMENTATION DESIGN}{7}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}End-to-End Search Procedure}{7}{subsection.6.1}\protected@file@percent }
+\newlabel{alg:searchbest_impl}{{1}{7}{Simplified version of the implemented search procedure}{lstlisting.1}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {1}Simplified version of the implemented search procedure.}{7}{lstlisting.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Opening-Book Integration}{7}{subsection.6.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Three phases of the workbook-based DPC/PC integration.}}{7}{table.6}\protected@file@percent }
+\newlabel{tab:book_phases}{{6}{7}{Three phases of the workbook-based DPC/PC integration}{table.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Offline Index Construction}{7}{subsection.6.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Suggested illustration for the three-phase opening-book pipeline.}}{7}{figure.4}\protected@file@percent }
+\newlabel{fig:dpc_placeholder}{{4}{7}{Suggested illustration for the three-phase opening-book pipeline}{figure.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Why the Solver Returns Only the First Move}{7}{subsection.6.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Main Search Parameters}{7}{subsection.6.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Important runtime parameters in the current implementation.}}{7}{table.7}\protected@file@percent }
+\newlabel{tab:params}{{7}{7}{Important runtime parameters in the current implementation}{table.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}STRATEGIC ANALYSIS}{8}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Why Greedy Placement Fails}{8}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Importance of Bag-Aware Lookahead}{8}{subsection.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Perfect Clear as a Delayed-Reward Objective}{8}{subsection.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Why Opening Books Help}{8}{subsection.7.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}Fallback Behavior Outside Book Coverage}{8}{subsection.7.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.6}Implication for Blitz Strategy}{8}{subsection.7.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}DISCUSSION}{8}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}CONCLUSION}{8}{section.9}\protected@file@percent }
+\bibcite{tetrio_official}{1}
+\bibcite{tetrio_blitz_wiki}{2}
+\bibcite{tetrio_mechanics_wiki}{3}
+\bibcite{tetris_scoring}{4}
+\bibcite{tetris_guideline}{5}
+\bibcite{demaine2003}{6}
+\bibcite{gabillon2013}{7}
+\bibcite{algorta2019}{8}
+\bibcite{bellman1957}{9}
+\bibcite{cormen2022}{10}
+\bibcite{light2023}{11}
+\bibcite{harddrop_tspin}{12}
+\bibcite{tetris_random_generator}{13}
+\bibcite{harddrop_tetrio}{14}
+\bibcite{harddrop_pco}{15}
+\bibcite{four_second_pc}{16}
+\bibcite{four_dpc}{17}
+\@writefile{toc}{\contentsline {section}{\numberline {10}APPENDIX}{9}{section.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {11}ACKNOWLEDGMENT}{9}{section.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {12}REFERENCES}{9}{section.12}\protected@file@percent }
+\gdef \@abspage@last{9}
