@@ -94,6 +94,15 @@ func TestStateKeyIncludesCanHold(t *testing.T) {
 	}
 }
 
+func TestBookStateKeyIncludesCanHold(t *testing.T) {
+	s1 := BookState{Queue: []byte{'T', 'I'}, Hold: 'O', CanHold: true}
+	s2 := BookState{Queue: []byte{'T', 'I'}, Hold: 'O', CanHold: false}
+
+	if bookStateKey(s1) == bookStateKey(s2) {
+		t.Fatalf("bookStateKey should distinguish hold availability")
+	}
+}
+
 func TestApplyCandidateHoldTransitions(t *testing.T) {
 	rows := [BoardH]uint16{}
 	activeState := State{Rows: rows, Queue: []byte{'T', 'I', 'L'}, Hold: 'O', CanHold: true}
@@ -121,6 +130,35 @@ func TestApplyCandidateHoldTransitions(t *testing.T) {
 	}
 	if swapNext.Hold != 'T' {
 		t.Fatalf("expected hold-swap to move current piece into hold, got %q", swapNext.Hold)
+	}
+}
+
+func TestApplyBookMoveHoldTransitions(t *testing.T) {
+	rows := [BoardH]uint16{}
+	base := BookState{Rows: rows, Queue: []byte{'T', 'I', 'L'}, Hold: 'O', CanHold: true}
+
+	active := applyBookMove(base, Move{Source: "ACTIVE", Piece: "T"})
+	if !active.CanHold {
+		t.Fatalf("expected hold to stay available after active placement")
+	}
+	if active.Hold != 'O' {
+		t.Fatalf("expected active placement to preserve hold piece, got %q", active.Hold)
+	}
+
+	empty := applyBookMove(BookState{Rows: rows, Queue: []byte{'T', 'I', 'L'}, Hold: 0, CanHold: true}, Move{Source: "HOLD_EMPTY", Piece: "I"})
+	if empty.CanHold {
+		t.Fatalf("expected hold to be locked after hold-empty use")
+	}
+	if empty.Hold != 'T' {
+		t.Fatalf("expected hold-empty to store current piece, got %q", empty.Hold)
+	}
+
+	swap := applyBookMove(base, Move{Source: "HOLD_SWAP", Piece: "O"})
+	if swap.CanHold {
+		t.Fatalf("expected hold to be locked after hold-swap use")
+	}
+	if swap.Hold != 'T' {
+		t.Fatalf("expected hold-swap to move current piece into hold, got %q", swap.Hold)
 	}
 }
 

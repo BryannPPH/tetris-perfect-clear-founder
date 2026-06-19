@@ -462,21 +462,14 @@ func openingVariantsFromCells(sheet byte, pieceCells map[byte][]Point) ([]Openin
 		return nil, fmt.Errorf("sheet %c expected 8 dup cells, got %d", sheet, len(dup))
 	}
 	sheetMoves := placementCandidatesFromSuperset(sheet, dup)
-	tMoves := placementCandidatesFromSuperset('T', dup)
+	if len(sheetMoves) == 0 {
+		return nil, fmt.Errorf("no starter candidates for sheet %c", sheet)
+	}
 	var variants []OpeningVariant
 	for _, sm := range sheetMoves {
-		for _, tm := range tMoves {
-			if !movesDisjoint(sm, tm) {
-				continue
-			}
-			if !movesCoverCells(sm, tm, dup) {
-				continue
-			}
-			m := copyPlacementMap(base)
-			m[sheet] = sm
-			m['T'] = tm
-			variants = append(variants, OpeningVariant{Placements: m})
-		}
+		m := copyPlacementMap(base)
+		m[sheet] = sm
+		variants = append(variants, OpeningVariant{Placements: m})
 	}
 	if len(variants) == 0 {
 		return nil, fmt.Errorf("no variants for sheet %c", sheet)
@@ -1060,13 +1053,14 @@ func applyBookMove(st BookState, mv Move) BookState {
 	rot := Pieces[mv.Piece[0]][mv.Rotation]
 	nr, _, _, _ := placeAndClear(st.Rows, rot, mv.X, mv.Y)
 	ns.Rows = nr
-	ns.CanHold = true
 	switch mv.Source {
 	case "ACTIVE":
+		ns.CanHold = true
 		if len(ns.Queue) > 0 {
 			ns.Queue = append([]byte{}, ns.Queue[1:]...)
 		}
 	case "HOLD_EMPTY":
+		ns.CanHold = false
 		oldActive := byte(0)
 		if len(ns.Queue) > 0 {
 			oldActive = ns.Queue[0]
@@ -1078,6 +1072,7 @@ func applyBookMove(st BookState, mv Move) BookState {
 			ns.Queue = []byte{}
 		}
 	case "HOLD_SWAP":
+		ns.CanHold = false
 		oldActive := byte(0)
 		if len(ns.Queue) > 0 {
 			oldActive = ns.Queue[0]
@@ -1105,5 +1100,11 @@ func bookStateKey(st BookState) string {
 	b.Write(st.Queue)
 	b.WriteByte('|')
 	b.WriteByte(st.Hold)
+	b.WriteByte('|')
+	if st.CanHold {
+		b.WriteByte('1')
+	} else {
+		b.WriteByte('0')
+	}
 	return b.String()
 }

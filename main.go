@@ -34,6 +34,8 @@ type Move struct {
 	PerfectClear bool    `json:"perfectClear"`
 	Immediate    int     `json:"immediate"`
 	Eval         float64 `json:"eval"`
+	Spin         string  `json:"spin,omitempty"`
+	Kick         bool    `json:"kick,omitempty"`
 	Cells        []Point `json:"cells"`
 }
 
@@ -272,6 +274,11 @@ func hardDropY(rows [BoardH]uint16, rot Rotation, x int) (int, bool) {
 }
 
 func placeAndClear(rows [BoardH]uint16, rot Rotation, x, y int) ([BoardH]uint16, int, bool, []Point) {
+	out, lines, pc, cells, _ := placeAndClearDetailed(rows, rot, x, y)
+	return out, lines, pc, cells
+}
+
+func placeAndClearDetailed(rows [BoardH]uint16, rot Rotation, x, y int) ([BoardH]uint16, int, bool, []Point, [BoardH]uint16) {
 	nr := rows
 	cells := []Point{}
 	for _, p := range rot {
@@ -281,6 +288,7 @@ func placeAndClear(rows [BoardH]uint16, rot Rotation, x, y int) ([BoardH]uint16,
 			cells = append(cells, Point{bx, by})
 		}
 	}
+	lockedRows := nr
 	full := uint16((1 << BoardW) - 1)
 	kept := make([]uint16, 0, BoardH)
 	cleared := 0
@@ -299,7 +307,41 @@ func placeAndClear(rows [BoardH]uint16, rot Rotation, x, y int) ([BoardH]uint16,
 	for i, v := range kept {
 		out[emptyRows+i] = v
 	}
-	return out, cleared, isEmpty(out), cells
+	return out, cleared, isEmpty(out), cells, lockedRows
+}
+
+func occupiedOrWall(rows [BoardH]uint16, x, y int) bool {
+	if x < 0 || x >= BoardW || y >= BoardH {
+		return true
+	}
+	if y < 0 {
+		return false
+	}
+	return rows[y]&(1<<x) != 0
+}
+
+func detectTSpin(piece byte, lockedRows [BoardH]uint16, rotIndex int, x, y, lines int, lastRotation bool) string {
+	if piece != 'T' || !lastRotation {
+		return ""
+	}
+	// The normalized T rotations used by this program all have the rotation
+	// center at local coordinate (1,1). Count the four diagonal corners around
+	// that center. This approximates the common three-corner T-Spin rule.
+	cx, cy := x+1, y+1
+	corners := []Point{{cx - 1, cy - 1}, {cx + 1, cy - 1}, {cx - 1, cy + 1}, {cx + 1, cy + 1}}
+	blocked := 0
+	for _, c := range corners {
+		if occupiedOrWall(lockedRows, c.X, c.Y) {
+			blocked++
+		}
+	}
+	if blocked < 3 {
+		return ""
+	}
+	if blocked == 3 && lines <= 1 {
+		return "MINI T-SPIN"
+	}
+	return "T-SPIN"
 }
 
 func isEmpty(rows [BoardH]uint16) bool {
@@ -328,19 +370,45 @@ func bitsCount16(v uint16) int {
 	return c
 }
 
-func scoreEvent(lines int, pc bool, combo int, b2b bool) (score int, newCombo int, newB2B bool) {
+func scoreEvent(lines int, pc bool, combo int, b2b bool, spin string) (score int, newCombo int, newB2B bool) {
 	base := 0
-	switch lines {
-	case 1:
-		base = 100
-	case 2:
-		base = 300
-	case 3:
-		base = 500
-	case 4:
-		base = 800
+	difficult := false
+	switch spin {
+	case "T-SPIN":
+		switch lines {
+		case 0:
+			base = 400
+		case 1:
+			base = 800
+		case 2:
+			base = 1200
+		case 3:
+			base = 1600
+		}
+		difficult = lines > 0
+	case "MINI T-SPIN":
+		switch lines {
+		case 0:
+			base = 100
+		case 1:
+			base = 200
+		case 2:
+			base = 400
+		}
+		difficult = lines > 0
+	default:
+		switch lines {
+		case 1:
+			base = 100
+		case 2:
+			base = 300
+		case 3:
+			base = 500
+		case 4:
+			base = 800
+		}
+		difficult = lines == 4
 	}
-	difficult := lines == 4
 	if difficult && b2b {
 		base = int(math.Round(float64(base) * 1.5))
 	}
@@ -658,6 +726,125 @@ func generatePlacementCandidates(st State, pcMode bool) []Candidate {
 	return generatePlacementCandidatesWithMode(st, pcMode, true)
 }
 
+type reachNode struct {
+	X, Y    int
+	Rot     int
+	LastRot bool
+}
+
+func reachKey(n reachNode) string {
+	return fmt.Sprintf("%d:%d:%d:%t", n.X, n.Y, n.Rot, n.LastRot)
+}
+
+func lockKey(n reachNode) string {
+	return fmt.Sprintf("%d:%d:%d", n.X, n.Y, n.Rot)
+}
+
+func srsKicks(piece byte, from, to, rotCount int) []Point {
+	// Approximate SRS wall-kick table for JLSTZ pieces. The source table uses
+	// y-positive-up coordinates; this program uses y-positive-down, so the y
+	// components are inverted.
+	if piece == 'O' || rotCount <= 1 {
+		return []Point{{0, 0}}
+	}
+	if piece != 'I' && rotCount == 4 {
+		tables := map[[2]int][]Point{
+			{0, 1}: {{0, 0}, {-1, 0}, {-1, -1}, {0, 2}, {-1, 2}},
+			{1, 0}: {{0, 0}, {1, 0}, {1, 1}, {0, -2}, {1, -2}},
+			{1, 2}: {{0, 0}, {1, 0}, {1, 1}, {0, -2}, {1, -2}},
+			{2, 1}: {{0, 0}, {-1, 0}, {-1, -1}, {0, 2}, {-1, 2}},
+			{2, 3}: {{0, 0}, {1, 0}, {1, -1}, {0, 2}, {1, 2}},
+			{3, 2}: {{0, 0}, {-1, 0}, {-1, 1}, {0, -2}, {-1, -2}},
+			{3, 0}: {{0, 0}, {-1, 0}, {-1, 1}, {0, -2}, {-1, -2}},
+			{0, 3}: {{0, 0}, {1, 0}, {1, -1}, {0, 2}, {1, 2}},
+		}
+		if kicks, ok := tables[[2]int{from, to}]; ok {
+			return kicks
+		}
+	}
+	// Fallback kicks for pieces with two unique rotations in this simplified
+	// rotation model, especially I/S/Z. This is not a perfect SRS table, but it
+	// enables common wall-kick and tuck placements instead of hard-drop only.
+	return []Point{{0, 0}, {-1, 0}, {1, 0}, {-2, 0}, {2, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}}
+}
+
+func reachableLockPlacements(rows [BoardH]uint16, piece byte) []reachNode {
+	rots := Pieces[piece]
+	if len(rots) == 0 {
+		return nil
+	}
+	start := reachNode{X: 3, Y: -4, Rot: 0, LastRot: false}
+	if collides(rows, rots[start.Rot], start.X, start.Y) {
+		// If the standard spawn anchor is blocked, try a few nearby anchors before
+		// declaring no placement possible. This helps with high stacks near spawn.
+		found := false
+		for _, dx := range []int{0, -1, 1, -2, 2} {
+			candidate := reachNode{X: start.X + dx, Y: start.Y, Rot: 0}
+			if !collides(rows, rots[candidate.Rot], candidate.X, candidate.Y) {
+				start = candidate
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+	}
+	queue := []reachNode{start}
+	seen := map[string]bool{reachKey(start): true}
+	locks := map[string]reachNode{}
+	push := func(n reachNode) {
+		if n.X < -5 || n.X > BoardW+5 || n.Y < -6 || n.Y >= BoardH {
+			return
+		}
+		if collides(rows, rots[n.Rot], n.X, n.Y) {
+			return
+		}
+		k := reachKey(n)
+		if seen[k] {
+			return
+		}
+		seen[k] = true
+		queue = append(queue, n)
+	}
+	for head := 0; head < len(queue); head++ {
+		st := queue[head]
+		rot := rots[st.Rot]
+		if collides(rows, rot, st.X, st.Y+1) {
+			k := lockKey(st)
+			if old, ok := locks[k]; !ok || (!old.LastRot && st.LastRot) {
+				locks[k] = st
+			}
+		}
+		push(reachNode{X: st.X - 1, Y: st.Y, Rot: st.Rot})
+		push(reachNode{X: st.X + 1, Y: st.Y, Rot: st.Rot})
+		push(reachNode{X: st.X, Y: st.Y + 1, Rot: st.Rot})
+		for _, dir := range []int{1, -1} {
+			nr := (st.Rot + dir + len(rots)) % len(rots)
+			for _, k := range srsKicks(piece, st.Rot, nr, len(rots)) {
+				push(reachNode{X: st.X + k.X, Y: st.Y + k.Y, Rot: nr, LastRot: true})
+			}
+		}
+		if len(seen) > 6000 {
+			break
+		}
+	}
+	out := make([]reachNode, 0, len(locks))
+	for _, v := range locks {
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Rot != out[j].Rot {
+			return out[i].Rot < out[j].Rot
+		}
+		if out[i].Y != out[j].Y {
+			return out[i].Y > out[j].Y
+		}
+		return out[i].X < out[j].X
+	})
+	return out
+}
+
 func generatePlacementCandidatesKnown(st State, pcMode bool) []Candidate {
 	return generatePlacementCandidatesWithMode(st, pcMode, false)
 }
@@ -697,22 +884,52 @@ func generatePlacementCandidatesWithMode(st State, pcMode bool, allowUnknownBran
 func candidatesForPiece(s State, piece byte, source string, level int, pcMode bool) []Candidate {
 	rots := Pieces[piece]
 	out := []Candidate{}
-	for ri, rot := range rots {
-		maxX := maxRotX(rot)
-		for x := -2; x <= BoardW-maxX+1; x++ {
-			y, ok := hardDropY(s.Rows, rot, x)
-			if !ok {
-				continue
+	bestByLock := map[string]Candidate{}
+	locks := reachableLockPlacements(s.Rows, piece)
+	// Fallback to the old hard-drop scan if the reachability graph fails for a
+	// very unusual spawn situation.
+	if len(locks) == 0 {
+		for ri, rot := range rots {
+			maxX := maxRotX(rot)
+			for x := -2; x <= BoardW-maxX+1; x++ {
+				y, ok := hardDropY(s.Rows, rot, x)
+				if !ok {
+					continue
+				}
+				locks = append(locks, reachNode{X: x, Y: y, Rot: ri, LastRot: false})
 			}
-			nr, lines, pc, cells := placeAndClear(s.Rows, rot, x, y)
-			if topOut(nr) {
-				continue
-			}
-			immediate, nc, nb := scoreEvent(lines, pc, s.Combo, s.B2B)
-			mv := Move{Source: source, Piece: string(piece), Rotation: ri, X: x, Y: y, Lines: lines, PerfectClear: pc, Immediate: immediate, Cells: cells}
-			out = append(out, Candidate{Move: mv, Rows: nr, Score: s.Score + immediate, Combo: nc, B2B: nb})
 		}
 	}
+	for _, lk := range locks {
+		if lk.Rot < 0 || lk.Rot >= len(rots) {
+			continue
+		}
+		rot := rots[lk.Rot]
+		nr, lines, pc, cells, lockedRows := placeAndClearDetailed(s.Rows, rot, lk.X, lk.Y)
+		if topOut(nr) {
+			continue
+		}
+		spin := detectTSpin(piece, lockedRows, lk.Rot, lk.X, lk.Y, lines, lk.LastRot)
+		immediate, nc, nb := scoreEvent(lines, pc, s.Combo, s.B2B, spin)
+		mv := Move{Source: source, Piece: string(piece), Rotation: lk.Rot, X: lk.X, Y: lk.Y, Lines: lines, PerfectClear: pc, Immediate: immediate, Spin: spin, Kick: lk.LastRot, Cells: cells}
+		cand := Candidate{Move: mv, Rows: nr, Score: s.Score + immediate, Combo: nc, B2B: nb}
+		key := fmt.Sprintf("%d:%d:%d", lk.Rot, lk.X, lk.Y)
+		if old, ok := bestByLock[key]; !ok || cand.Move.Immediate > old.Move.Immediate || (cand.Move.Spin != "" && old.Move.Spin == "") {
+			bestByLock[key] = cand
+		}
+	}
+	for _, c := range bestByLock {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Move.Immediate != out[j].Move.Immediate {
+			return out[i].Move.Immediate > out[j].Move.Immediate
+		}
+		if out[i].Move.Rotation != out[j].Move.Rotation {
+			return out[i].Move.Rotation < out[j].Move.Rotation
+		}
+		return out[i].Move.X < out[j].Move.X
+	})
 	return out
 }
 
@@ -933,18 +1150,26 @@ func replayFirst(rows [BoardH]uint16, init State, mv Move, pcMode bool) State {
 	st := init
 	var piece byte = mv.Piece[0]
 	rot := Pieces[piece][mv.Rotation]
-	nr, lines, pc, _ := placeAndClear(rows, rot, mv.X, mv.Y)
-	imm, nc, nb := scoreEvent(lines, pc, st.Combo, st.B2B)
+	nr, lines, pc, _, lockedRows := placeAndClearDetailed(rows, rot, mv.X, mv.Y)
+	spin := mv.Spin
+	if spin == "" {
+		spin = detectTSpin(piece, lockedRows, mv.Rotation, mv.X, mv.Y, lines, mv.Kick)
+	}
+	imm, nc, nb := scoreEvent(lines, pc, st.Combo, st.B2B, spin)
+	mv.Lines = lines
+	mv.PerfectClear = pc
+	mv.Immediate = imm
+	mv.Spin = spin
 	cand := Candidate{Move: mv, Rows: nr, Score: imm, Combo: nc, B2B: nb}
 	return applyCandidate(st, cand)
 }
 
 func stateKey(s State) SearchKey {
 	k := SearchKey{
-		Rows:  s.Rows,
-		Hold:  s.Hold,
+		Rows:    s.Rows,
+		Hold:    s.Hold,
 		CanHold: s.CanHold,
-		Combo: s.Combo,
+		Combo:   s.Combo,
 	}
 	if s.B2B {
 		k.Flags |= 1
@@ -1580,6 +1805,7 @@ async function recommend(){
     'X, Y        : ' + m.x + ', ' + m.y + '\n' +
     'Lines       : ' + m.lines + '\n' +
     'PerfectClear: ' + m.perfectClear + '\n' +
+    'Spin/Kick   : ' + ((m.spin||'-') + (m.kick ? ' via kick' : '')) + '\n' +
     'Immediate   : ' + m.immediate + '\n' +
     'Eval        : ' + (m.eval && m.eval.toFixed ? m.eval.toFixed(2) : m.eval) + '\n' +
     'Explored    : ' + data.exploredStates + '\n\n' +
@@ -1588,7 +1814,7 @@ async function recommend(){
     'WHY\n' + data.reason;
   const plan=document.getElementById('plan');
   plan.innerHTML='<h3>Planned line</h3>'+(data.plan||[]).slice(0,8).map(function(p,i){
-    return '<div class="move"><b>'+(i+1)+'. '+p.piece+'</b> '+p.source+', rot='+p.rotation+', x='+p.x+', y='+p.y+', lines='+p.lines+', PC='+p.perfectClear+', +'+p.immediate+'</div>';
+    return '<div class="move"><b>'+(i+1)+'. '+p.piece+'</b> '+p.source+', rot='+p.rotation+', x='+p.x+', y='+p.y+', lines='+p.lines+', PC='+p.perfectClear+', spin='+(p.spin||'-')+', +'+p.immediate+'</div>';
   }).join('');
 }
 init();
