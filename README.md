@@ -1,91 +1,97 @@
-# TETR.IO Go Smart Advisor
+# TETR.IO Go SRS All-Spin + DPC Advisor
 
-Offline GUI/practice tool for TETR.IO Blitz placement planning.
+Ini adalah paket final source program untuk offline TETR.IO placement advisor berbasis Go.
 
-This version is written in **Go** and uses a local web GUI. It does not need heavy GUI libraries such as Tkinter/Fyne. The Go program runs a local server at `http://127.0.0.1:8787`, then opens the interface in your browser.
+## Isi utama
 
-## Features
+- `main.go` — server lokal, UI web, search engine, SRS/all-spin movement, scoring approximation, DP/beam search.
+- `opening_book.go` — loader dan matcher untuk DPC opening book.
+- `opening_book.json` — full DPC opening book hasil convert dari database Excel, berisi 4081 entry valid.
+- `go.mod` — konfigurasi module Go.
+- `run_mac.command` — shortcut menjalankan program di macOS.
+- `run_windows.bat` — shortcut menjalankan program di Windows.
+- `build_mac.command` — optional build binary lokal.
+- `tools/converter/` — converter Excel DPC ke `opening_book.json`.
+- `data/DPC_All_Search_Database_v1.0.0.xlsx` — file database sumber untuk regenerate opening book.
+- `reports/opening_book_full_conversion_report.md` — ringkasan hasil convert.
 
-- Clickable 20x10 board.
-- Input current piece and exactly 5 next pieces.
-- Optional hold piece.
-- Uses current + 5 next as the 6 visible pieces.
-- After the visible pieces are consumed, it branches using an inferred **7-bag randomizer residue**.
-- Beam-search / dynamic-programming-style lookahead.
-- PC/DPC-focused heuristic mode for perfect clear planning.
-- Scores Single, Double, Triple, Quad/Tetris, combo, B2B, and Perfect Clear approximately.
-- Shows the recommended first placement and a planned line of future placements.
+## Cara menjalankan di macOS
 
-## Run on Mac
+Pastikan Go sudah terinstall, lalu jalankan:
 
-If you have Go installed:
+```bash
+./run_mac.command
+```
+
+Atau manual:
 
 ```bash
 go run .
 ```
 
-Or double-click/run:
-
-```bash
-./run_mac.command
-```
-
-If macOS blocks it, run:
-
-```bash
-chmod +x run_mac.command
-./run_mac.command
-```
-
-## Run with included binary
-
-For Intel Mac:
-
-```bash
-./bin/tetrio-go-smart-advisor-darwin-amd64
-```
-
-For Apple Silicon Mac:
-
-```bash
-./bin/tetrio-go-smart-advisor-darwin-arm64
-```
-
-Then open:
+Lalu buka browser:
 
 ```text
 http://127.0.0.1:8787
 ```
 
-## How to use
+## Cara menjalankan di Windows
 
-1. Click board cells to match your current TETR.IO board.
-2. Input the current piece, for example `T`.
-3. Input the 5 next pieces, for example `SZILO`.
-4. Optionally input hold piece.
-5. Set depth and beam width.
-6. Click **Recommend Placement**.
-7. Green cells show where to place the piece.
-8. Click **Apply Recommendation** if you want to update the simulated board.
+Klik dua kali:
 
-## Important notes
+```text
+run_windows.bat
+```
 
-This is an offline practice/analysis tool, not a live gameplay bot. It does not read your screen, press keys, or submit scores.
+Atau buka terminal di folder ini:
 
-The rotation model is simplified and does not fully implement TETR.IO/SRS wall-kick pathfinding. The strategy search is strong enough for a makalah prototype and manual practice, but it is not guaranteed to be globally optimal.
+```bash
+go run .
+```
 
-## Algorithm summary
+## Build binary lokal
 
-The advisor evaluates candidate placements using:
+Karena `opening_book.json` besar dan di-embed ke binary, binary hasil build akan besar juga. Untuk build sendiri:
 
-- immediate score,
-- board holes,
-- bumpiness,
-- maximum height,
-- Tetris well quality,
-- perfect clear potential,
-- B2B readiness,
-- visible 6-piece queue,
-- inferred seven-bag residue after the preview.
+```bash
+go build -o tetrio-dpc-advisor .
+```
 
-The search keeps only the best states at every depth using beam pruning, making it much faster than exhaustive search.
+Di macOS bisa pakai:
+
+```bash
+./build_mac.command
+```
+
+## Fitur utama
+
+- Board 20x10 clickable.
+- Current piece, hold, dan next 5 piece input.
+- SRS-style wall kick reachability.
+- Movement simulation: left, right, down, CW, CCW.
+- T-Spin dan Mini T-Spin detection.
+- Conservative all-spin detection untuk S/Z/J/L/I spin berbasis rotated + immobile placement.
+- PC/DPC mode.
+- Seven-bag residue inference.
+- Beam-pruned finite-horizon dynamic programming search.
+- Full DPC opening book dari 4081 entry database.
+
+## Regenerate opening_book.json dari Excel
+
+Masuk ke folder converter:
+
+```bash
+cd tools/converter
+npm install
+node convert_dpc_excel_to_opening_book_full.js ../../data/DPC_All_Search_Database_v1.0.0.xlsx ../../opening_book.json
+```
+
+Setelah mengganti `opening_book.json`, jika memakai binary hasil build, rebuild binary karena file ini di-embed oleh Go:
+
+```bash
+go build -o tetrio-dpc-advisor .
+```
+
+## Catatan penting
+
+Program ini adalah offline advisor untuk analisis dan latihan, bukan live gameplay bot. SRS, spin detection, dan scoring masih approximation, bukan byte-perfect clone engine TETR.IO asli. Namun versi ini sudah jauh lebih lengkap dibanding hard-drop-only search karena sudah memasukkan SRS reachability, all-spin classification approximation, seven-bag residue, dan DPC opening book.

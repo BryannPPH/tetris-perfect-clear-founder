@@ -1,0 +1,14 @@
+{
+  "name": "dpc-opening-book-converter-full",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Convert all DPC All Search Database xlsx rows into opening_book.json for the TETR.IO Go advisor.",
+  "main": "convert_dpc_excel_to_opening_book_full.js",
+  "scripts": {
+    "convert": "node convert_dpc_excel_to_opening_book_full.js ../DPC_All_Search_Database_v1.0.0.xlsx ./opening_book.json"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5",
+    "tetris-fumen": "^1.2.0"
+  }
+}

@@ -26,20 +26,22 @@ type RawPCSolution struct {
 }
 
 type RawOpeningEntry struct {
-	ID          int             `json:"id"`
-	Sheet       string          `json:"sheet"`
-	No          int             `json:"no"`
-	Condition   string          `json:"condition"`
-	PCRate      float64         `json:"pcRate"`
-	SetupRate   float64         `json:"setupRate"`
-	DTETPCRate  float64         `json:"dtetpcRate"`
-	DDPCRate    float64         `json:"ddpcRate"`
-	DSPCRate    float64         `json:"dspcRate"`
-	Score       float64         `json:"score"`
-	SetupRows   []string        `json:"setupRows"`
-	TriggerRows []string        `json:"triggerRows,omitempty"`
-	AfterRows   []string        `json:"afterRows,omitempty"`
-	PCSolutions []RawPCSolution `json:"pcSolutions,omitempty"`
+	ID             int             `json:"id"`
+	Sheet          string          `json:"sheet"`
+	No             int             `json:"no"`
+	Condition      string          `json:"condition"`
+	PCRate         float64         `json:"pcRate"`
+	SetupRate      float64         `json:"setupRate"`
+	DTETPCRate     float64         `json:"dtetpcRate"`
+	DDPCRate       float64         `json:"ddpcRate"`
+	DSPCRate       float64         `json:"dspcRate"`
+	Score          float64         `json:"score"`
+	SetupRows      []string        `json:"setupRows"`
+	Placements     map[string]Move `json:"placements,omitempty"`
+	PlacementSteps []Move          `json:"placementSteps,omitempty"`
+	TriggerRows    []string        `json:"triggerRows,omitempty"`
+	AfterRows      []string        `json:"afterRows,omitempty"`
+	PCSolutions    []RawPCSolution `json:"pcSolutions,omitempty"`
 }
 
 type OpeningBook struct {
@@ -68,6 +70,7 @@ type OpeningEntry struct {
 
 type OpeningVariant struct {
 	Placements map[byte]Move
+	Steps      []Move
 }
 
 type TriggerTemplate struct {
@@ -123,7 +126,11 @@ func loadOpeningBook() error {
 		book.Entries[entry.ID] = entry
 	}
 
-	book.ByOrder = rebuildOpeningOrderIndex(book.Entries)
+	if len(raw.ByOrder) > 0 {
+		book.ByOrder = filterRawByOrder(raw.ByOrder, book.Entries)
+	} else {
+		book.ByOrder = rebuildOpeningOrderIndex(book.Entries)
+	}
 
 	for order, ids := range book.ByOrder {
 		sort.SliceStable(ids, func(i, j int) bool {
@@ -151,6 +158,21 @@ func loadOpeningBook() error {
 	}
 	openingBook = book
 	return nil
+}
+
+func filterRawByOrder(raw map[string][]int, entries map[int]*OpeningEntry) map[string][]int {
+	out := map[string][]int{}
+	for order, ids := range raw {
+		if len(order) != 7 {
+			continue
+		}
+		for _, id := range ids {
+			if entries[id] != nil {
+				out[order] = append(out[order], id)
+			}
+		}
+	}
+	return out
 }
 
 func rebuildOpeningOrderIndex(entries map[int]*OpeningEntry) map[string][]int {
@@ -199,7 +221,7 @@ func rebuildOpeningOrderIndex(entries map[int]*OpeningEntry) map[string][]int {
 				for _, order := range allSevenBagOrders {
 					state := BookState{
 						Rows:    empty,
-						Queue:   []byte(order),
+						Queue:   []byte(setupOrderForEntry(order, t.entry)),
 						Hold:    0,
 						CanHold: true,
 					}
@@ -265,9 +287,18 @@ func buildOpeningEntry(raw RawOpeningEntry) (*OpeningEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	variants, err := openingVariantsFromCells(raw.Sheet[0], pieceCells)
-	if err != nil {
-		return nil, err
+	var variants []OpeningVariant
+	if len(raw.PlacementSteps) > 0 || len(raw.Placements) > 0 {
+		steps := normalizeRawPlacementSteps(raw.PlacementSteps, raw.Placements)
+		if len(steps) == 0 {
+			return nil, fmt.Errorf("no placement steps")
+		}
+		variants = []OpeningVariant{{Placements: mapFromSteps(steps), Steps: steps}}
+	} else {
+		variants, err = openingVariantsFromCells(raw.Sheet[0], pieceCells)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	pcSolutions := map[string][]PCSolution{}
@@ -454,7 +485,7 @@ func openingVariantsFromCells(sheet byte, pieceCells map[byte][]Point) ([]Openin
 			return nil, err
 		}
 		base['T'] = mv
-		return []OpeningVariant{{Placements: copyPlacementMap(base)}}, nil
+		return []OpeningVariant{{Placements: copyPlacementMap(base), Steps: stepsFromMap(base)}}, nil
 	}
 
 	dup := pieceCells[sheet]
@@ -469,7 +500,7 @@ func openingVariantsFromCells(sheet byte, pieceCells map[byte][]Point) ([]Openin
 	for _, sm := range sheetMoves {
 		m := copyPlacementMap(base)
 		m[sheet] = sm
-		variants = append(variants, OpeningVariant{Placements: m})
+		variants = append(variants, OpeningVariant{Placements: m, Steps: stepsFromMap(m)})
 	}
 	if len(variants) == 0 {
 		return nil, fmt.Errorf("no variants for sheet %c", sheet)
@@ -713,7 +744,8 @@ func setupBookResponse(rows [BoardH]uint16, current byte, next []byte, hold byte
 		if !ok || complete {
 			continue
 		}
-		queue := buildExactQueue(order, current, next, hold, placed)
+		setupOrder := setupOrderForEntry(order, entry)
+		queue := buildExactQueue(setupOrder, current, next, hold, placed)
 		state := BookState{Rows: rows, Queue: queue, Hold: hold, CanHold: true}
 		plan, ok := searchOpeningPlan(state, entry.TargetRows, variant, map[string]bool{})
 		if !ok || len(plan) == 0 {
@@ -726,8 +758,8 @@ func setupBookResponse(rows [BoardH]uint16, current byte, next []byte, hold byte
 			BoardAfter:     rowsToStrings(after.Rows),
 			BoardPreview:   overlayStrings(rows, plan[0].Cells),
 			Plan:           plan,
-			BagInfo:        fmt.Sprintf("Opening book entry %c-%d on exact first-bag order %s.", entry.FirstPiece, entry.No, order),
-			Reason:         fmt.Sprintf("Workbook setup phase. Entry #%d matches the current partial stack for first-bag order %s. PC %.2f%%, setup %.2f%%.", entry.No, order, entry.PCRate, entry.SetupRate),
+			BagInfo:        fmt.Sprintf("Opening book entry %c-%d on first-bag order %s; setup queue model %s.", entry.FirstPiece, entry.No, order, setupOrder),
+			Reason:         fmt.Sprintf("Workbook setup phase. Entry #%d matches the current partial stack. PC %.2f%%, setup %.2f%%.", entry.No, entry.PCRate, entry.SetupRate),
 			ExploredStates: 0,
 			OpeningID:      entry.ID,
 			OpeningOrder:   order,
@@ -784,7 +816,7 @@ func pcBookResponse(rows [BoardH]uint16, current byte, next []byte, hold byte, e
 		return bookProposal{}, false
 	}
 
-	queue := buildExactQueue(finishOrder, current, next, hold, map[byte]bool{})
+	queue := buildExactQueue(finishOrder, current, next, hold, map[byte]int{})
 	if len(queue) == 0 {
 		return bookProposal{}, false
 	}
@@ -823,12 +855,68 @@ func pcBookResponse(rows [BoardH]uint16, current byte, next []byte, hold byte, e
 	return bookProposal{Response: resp, Phase: 3, Rank: 3e9 + rate*1e6 + entry.Score}, true
 }
 
-func openingSubsetStatus(rows, target [BoardH]uint16, variant OpeningVariant) (map[byte]bool, bool, bool) {
+func normalizeRawPlacementSteps(steps []Move, placements map[string]Move) []Move {
+	var out []Move
+	if len(steps) > 0 {
+		for _, mv := range steps {
+			if len(mv.Piece) == 0 {
+				continue
+			}
+			out = append(out, mv)
+		}
+		return out
+	}
+	for _, p := range AllPieces {
+		if mv, ok := placements[string(p)]; ok {
+			if mv.Piece == "" {
+				mv.Piece = string(p)
+			}
+			out = append(out, mv)
+		}
+	}
+	return out
+}
+
+func mapFromSteps(steps []Move) map[byte]Move {
+	m := map[byte]Move{}
+	for _, mv := range steps {
+		if len(mv.Piece) == 0 {
+			continue
+		}
+		if _, exists := m[mv.Piece[0]]; !exists {
+			m[mv.Piece[0]] = mv
+		}
+	}
+	return m
+}
+
+func stepsFromMap(m map[byte]Move) []Move {
+	var out []Move
+	for _, p := range AllPieces {
+		if mv, ok := m[p]; ok {
+			if mv.Piece == "" {
+				mv.Piece = string(p)
+			}
+			out = append(out, mv)
+		}
+	}
+	return out
+}
+
+func variantSteps(variant OpeningVariant) []Move {
+	if len(variant.Steps) > 0 {
+		return variant.Steps
+	}
+	return stepsFromMap(variant.Placements)
+}
+
+func openingSubsetStatus(rows, target [BoardH]uint16, variant OpeningVariant) (map[byte]int, bool, bool) {
 	if !rowsSubset(rows, target) {
 		return nil, false, false
 	}
-	placed := map[byte]bool{}
-	for piece, mv := range variant.Placements {
+	placed := map[byte]int{}
+	placedSteps := 0
+	for _, mv := range variantSteps(variant) {
 		n := 0
 		for _, c := range mv.Cells {
 			if rows[c.Y]&(1<<c.X) != 0 {
@@ -839,13 +927,14 @@ func openingSubsetStatus(rows, target [BoardH]uint16, variant OpeningVariant) (m
 			return nil, false, false
 		}
 		if n == 4 {
-			placed[piece] = true
+			placed[mv.Piece[0]]++
+			placedSteps++
 		}
 	}
-	if countCells(rows) != len(placed)*4 {
+	if countCells(rows) != placedSteps*4 {
 		return nil, false, false
 	}
-	return placed, len(placed) == len(variant.Placements), true
+	return placed, placedSteps == len(variantSteps(variant)), true
 }
 
 func rowsSubset(rows, target [BoardH]uint16) bool {
@@ -866,37 +955,66 @@ func rowsEqual(a, b [BoardH]uint16) bool {
 	return true
 }
 
-func buildExactQueue(order string, current byte, next []byte, hold byte, placed map[byte]bool) []byte {
-	remaining := map[byte]bool{}
+func buildExactQueue(order string, current byte, next []byte, hold byte, placed map[byte]int) []byte {
+	remaining := map[byte]int{}
 	for i := 0; i < len(order); i++ {
 		p := order[i]
-		if placed[p] {
-			continue
+		remaining[p]++
+	}
+	for p, n := range placed {
+		remaining[p] -= n
+		if remaining[p] < 0 {
+			remaining[p] = 0
 		}
-		remaining[p] = true
 	}
 
 	var queue []byte
-	present := map[byte]bool{}
-	for _, p := range append([]byte{current}, next...) {
-		if !remaining[p] || present[p] {
+	present := map[byte]int{}
+	visible := append([]byte{current}, next...)
+	for _, p := range visible {
+		if remaining[p] <= 0 || present[p] >= remaining[p] {
 			continue
 		}
 		queue = append(queue, p)
-		present[p] = true
+		present[p]++
 	}
-	if hold != 0 && remaining[hold] {
-		present[hold] = true
+	if hold != 0 && remaining[hold] > 0 && present[hold] < remaining[hold] {
+		present[hold]++
 	}
 	for i := 0; i < len(order); i++ {
 		p := order[i]
-		if !remaining[p] || present[p] {
-			continue
+		for remaining[p] > 0 && present[p] < remaining[p] {
+			queue = append(queue, p)
+			present[p]++
 		}
-		queue = append(queue, p)
-		present[p] = true
 	}
 	return queue
+}
+
+func setupOrderForEntry(order string, entry *OpeningEntry) string {
+	if entry == nil || len(order) == 0 {
+		return order
+	}
+	required := map[byte]int{}
+	if len(entry.Variants) > 0 {
+		for _, mv := range variantSteps(entry.Variants[0]) {
+			if len(mv.Piece) > 0 {
+				required[mv.Piece[0]]++
+			}
+		}
+	}
+	counts := map[byte]int{}
+	for i := 0; i < len(order); i++ {
+		counts[order[i]]++
+	}
+	out := order
+	for _, p := range AllPieces {
+		for counts[p] < required[p] {
+			out += string(p)
+			counts[p]++
+		}
+	}
+	return out
 }
 
 func looksLikeRemainingOrder(order string) bool {
@@ -978,32 +1096,39 @@ func openingCandidates(st BookState, variant OpeningVariant) []Move {
 }
 
 func openingCandidateForPiece(st BookState, piece byte, source string, variant OpeningVariant) (Move, bool) {
-	template, ok := variant.Placements[piece]
-	if !ok {
-		return Move{}, false
-	}
-	for _, c := range template.Cells {
-		if st.Rows[c.Y]&(1<<c.X) != 0 {
-			return Move{}, false
+	for _, template := range variantSteps(variant) {
+		if len(template.Piece) == 0 || template.Piece[0] != piece {
+			continue
 		}
+		blocked := false
+		for _, c := range template.Cells {
+			if st.Rows[c.Y]&(1<<c.X) != 0 {
+				blocked = true
+				break
+			}
+		}
+		if blocked {
+			continue
+		}
+		rot := Pieces[piece][template.Rotation]
+		if !matchesHardDrop(st.Rows, rot, template.X, template.Y) {
+			continue
+		}
+		_, lines, pc, cells := placeAndClear(st.Rows, rot, template.X, template.Y)
+		if lines != 0 || pc {
+			continue
+		}
+		mv := template
+		mv.Source = source
+		mv.Piece = string(piece)
+		mv.Lines = 0
+		mv.PerfectClear = false
+		mv.Immediate = 0
+		mv.Eval = 0
+		mv.Cells = cells
+		return mv, true
 	}
-	rot := Pieces[piece][template.Rotation]
-	if !matchesHardDrop(st.Rows, rot, template.X, template.Y) {
-		return Move{}, false
-	}
-	_, lines, pc, cells := placeAndClear(st.Rows, rot, template.X, template.Y)
-	if lines != 0 || pc {
-		return Move{}, false
-	}
-	mv := template
-	mv.Source = source
-	mv.Piece = string(piece)
-	mv.Lines = 0
-	mv.PerfectClear = false
-	mv.Immediate = 0
-	mv.Eval = 0
-	mv.Cells = cells
-	return mv, true
+	return Move{}, false
 }
 
 func triggerCandidate(st BookState, trigger *TriggerTemplate, afterRows [BoardH]uint16) (Move, bool) {
